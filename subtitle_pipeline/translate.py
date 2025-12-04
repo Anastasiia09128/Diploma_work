@@ -1,19 +1,31 @@
 import re
 import textwrap
 from typing import List, Dict
+from pathlib import Path
 
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 from .subs import clean_text_for_subs, format_timestamp
 
-
-device = "cpu"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 print("Устройство для перевода:", device)
 
-mt_model_name = "Helsinki-NLP/opus-mt-en-ru"
-tokenizer_mt = AutoTokenizer.from_pretrained(mt_model_name)
-model_mt = AutoModelForSeq2SeqLM.from_pretrained(mt_model_name).to(device)
+MODEL_DIR = Path("/mnt/d/opus-mt-en-ru")
+
+print(f"Загрузка модели перевода из локальной папки: {MODEL_DIR}")
+
+
+tokenizer_mt = AutoTokenizer.from_pretrained(
+    MODEL_DIR,
+    local_files_only=True,
+)
+
+model_mt = AutoModelForSeq2SeqLM.from_pretrained(
+    MODEL_DIR,
+    local_files_only=True,
+).to(device)
+
 
 
 def translate_batch_en_ru(texts: List[str], max_new_tokens: int = 128) -> List[str]:
