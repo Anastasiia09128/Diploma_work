@@ -3,20 +3,24 @@ from subtitle_pipeline import process_video
 
 
 def run_pipeline(video_file, model_size):
-    """
-    Функция-обёртка для Gradio.
-    video_file — это объект с путём к временному файлу.
-    """
-    if video_file is None:
-        return None, None
+    if not video_file:
+        raise gr.Error("Пожалуйста, загрузите видео.")
 
-    # Gradio передаёт объект с атрибутом name (путь к файлу)
-    video_path = video_file.name
+    # Gradio может передать либо строку (путь к файлу), либо объект.
+    if isinstance(video_file, str):
+        video_path = video_file
+    else:
+        # на всякий случай пытаемся взять name/path
+        video_path = getattr(video_file, "name", None) or getattr(video_file, "path", None)
+        if video_path is None:
+            raise gr.Error("Не удалось определить путь к видеофайлу.")
 
+    print("Запускаем пайплайн для:", video_path)
     en_srt_path, ru_srt_path = process_video(video_path, model_size=model_size)
 
-    # Gradio ожидает пути к файлам для загрузки
-    return en_srt_path, ru_srt_path
+    # Gradio File ждёт строку пути
+    return str(en_srt_path), str(ru_srt_path)
+
 
 
 with gr.Blocks(title="MoviSub — генератор субтитров") as demo:
