@@ -3,4 +3,3 @@ openai-whisper
 transformers
 sentencepiece
 soundfile
-ffmpeg-python
