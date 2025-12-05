@@ -1,63 +1,134 @@
 import gradio as gr
+from pathlib import Path
+import subprocess
+import os
+
 from subtitle_pipeline import process_video
 
+def clear_outputs():
+    out_dir = Path("outputs")
+    if not out_dir.exists():
+        return
+    for p in out_dir.iterdir():
+        if p.is_file():
+            try:
+                p.unlink()
+            except OSError as e:
+                print(f"Не удалось удалить {p}: {e}")
 
-def run_pipeline(video_file, model_size):
+
+def burn_subtitles(video_path: str, srt_path: str, suffix: str) -> str:
+
+    input_video = Path(video_path)
+    output_dir = Path("outputs")
+    output_dir.mkdir(exist_ok=True)
+
+    output_video = output_dir / f"{input_video.stem}_{suffix}_subs.mp4"
+
+    srt_path = Path(srt_path).resolve()
+    input_video = input_video.resolve()
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(input_video),
+        "-vf",
+        f"subtitles={srt_path}",
+        "-c:a",
+        "copy",
+        str(output_video),
+    ]
+
+    print("Видео с субтитрами командой:", " ".join(cmd))
+    subprocess.run(cmd, check=True)
+    print("Видео с субтитрами сохранено как:", output_video)
+
+    return str(output_video)
+
+
+def run_pipeline(video_file):
+    if not video_file:
+        raise gr.Error("Пожалуйста, загрузите видео.")
+    
+    clear_outputs() 
+
     if not video_file:
         raise gr.Error("Пожалуйста, загрузите видео.")
 
-    # Gradio может передать либо строку (путь к файлу), либо объект.
+
     if isinstance(video_file, str):
         video_path = video_file
     else:
-        # на всякий случай пытаемся взять name/path
-        video_path = getattr(video_file, "name", None) or getattr(video_file, "path", None)
+        video_path = getattr(video_file, "name", None) or getattr(
+            video_file, "path", None
+        )
         if video_path is None:
             raise gr.Error("Не удалось определить путь к видеофайлу.")
 
-    print("Запускаем пайплайн для:", video_path)
-    en_srt_path, ru_srt_path = process_video(video_path, model_size=model_size)
+    print("Запуск пайплайна для:", video_path)
 
-    # Gradio File ждёт строку пути
-    return str(en_srt_path), str(ru_srt_path)
+    en_srt_path, ru_srt_path = process_video(video_path, model_size="small")
+
+    video_with_en_subs = burn_subtitles(video_path, en_srt_path, suffix="en")
+    video_with_ru_subs = burn_subtitles(video_path, ru_srt_path, suffix="ru")
+
+    return video_with_en_subs, video_with_ru_subs, str(en_srt_path), str(ru_srt_path)
 
 
-
-with gr.Blocks(title="MoviSub — генератор субтитров") as demo:
+with gr.Blocks(
+    title="MoviSub",
+) as demo:
     gr.Markdown(
         """
-        # 🎬 MoviSub
-
-        Загрузите видео, и сервис:
-        1. Выделит аудио  
-        2. Распознает речь (Whisper)  
-        3. Создаст английские субтитры (`.srt`)  
-        4. Переведёт субтитры на русский и сохранит второй `.srt`  
-
-        Затем вы сможете скачать оба файла.
+        <div style="text-align: center; margin-bottom: 1.5rem;">
+            <h1>🎬 MoviSub</h1>
+            <p style="font-size: 1.05rem;">
+                Сервис для автоматического создания  субтитров к видео.
+            </p>
+        </div> 
         """
     )
 
+    gr.Markdown("### 1️⃣ Загрузите видео")
+    video_input = gr.File(
+        label="Видео файл",
+        file_types=["video"],
+    )
+
+    run_btn = gr.Button(
+        "✍ Создать субтитры",
+        variant="primary",
+    )
+
+    gr.Markdown("### 2️⃣ Просмотр результата")
+
     with gr.Row():
-        video_input = gr.Video(label="Видео файл", sources=["upload"])
-        model_size = gr.Dropdown(
-            ["tiny", "base", "small", "medium"],
-            value="small",
-            label="Размер модели Whisper",
-            info="Чем больше модель, тем лучше качество, но дольше обработка.",
+        video_with_en_subs = gr.Video(
+            label="Видео с оригинальными (EN) субтитрами",
+            interactive=False,
+        )
+        video_with_ru_subs = gr.Video(
+            label="Видео с русскими субтитрами",
+            interactive=False,
         )
 
-    run_btn = gr.Button("🚀 Обработать видео")
+    gr.Markdown("### 3️⃣ Скачать субтитры")
 
     with gr.Row():
-        en_srt_output = gr.File(label="Английские субтитры (.srt)")
-        ru_srt_output = gr.File(label="Русские субтитры (.srt)")
+        en_srt_output = gr.File(
+            label="📄 Английские субтитры (.srt)",
+        )
+        ru_srt_output = gr.File(
+            label="📄 Русские субтитры (.srt)",
+        )
+
 
     run_btn.click(
         fn=run_pipeline,
-        inputs=[video_input, model_size],
-        outputs=[en_srt_output, ru_srt_output],
+        inputs=[video_input],
+        outputs=[video_with_en_subs, video_with_ru_subs, en_srt_output, ru_srt_output],
     )
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(theme="Nymbo/Nymbo_Theme")
