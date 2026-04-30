@@ -3,7 +3,7 @@ import whisper
 
 class WhisperASR:
     
-    def __init__(self, model_size: str = "small", device: str | None = None):
+    def __init__(self, model_size: str = "small"):
         self.device = "cpu"
         print(f"Инициализация Whisper ({model_size})... Устройство: {self.device}")
 
@@ -17,7 +17,7 @@ class WhisperASR:
             audio_path,
             language="en",
             task="transcribe",
-            fp16=True if self.device == "cuda" else False,
+            fp16=False,
         )
 
         raw_text = result["text"].strip()
