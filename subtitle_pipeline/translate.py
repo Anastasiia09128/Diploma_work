@@ -8,7 +8,7 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 from .subs import clean_text_for_subs, format_timestamp
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cpu"
 print("Устройство для перевода:", device)
 
 MODEL_DIR = Path("/mnt/d/opus-mt-en-ru")
