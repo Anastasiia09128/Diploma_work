@@ -38,8 +38,8 @@ def process_video(video_path: str, model_size: str = "small") -> tuple[str, str]
     en_srt_path_str = segments_to_srt(
         segments,
         output_path=str(en_srt_path),
-        max_chars_block=70,
-        max_line_len=35,
+        max_chars_block=78,
+        max_line_len=39,
         min_block_dur=1.0,
     )
 
@@ -49,7 +49,7 @@ def process_video(video_path: str, model_size: str = "small") -> tuple[str, str]
     ru_srt_path_str = segments_to_srt_ru(
         segments_ru,
         output_path=str(ru_srt_path),
-        max_chars_block=70,
+        max_chars_block=78,
         max_line_len=39,
         min_block_dur=1.0,
     )

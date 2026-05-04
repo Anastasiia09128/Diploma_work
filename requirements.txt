@@ -3,3 +3,4 @@ openai-whisper
 transformers
 sentencepiece
 soundfile
+spacy
