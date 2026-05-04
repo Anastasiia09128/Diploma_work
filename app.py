@@ -77,31 +77,31 @@ def run_pipeline(video_file):
 
 
 with gr.Blocks(
-    title="MoviSub",
+    title="Субтитры",
 ) as demo:
     gr.Markdown(
         """
         <div style="text-align: center; margin-bottom: 1.5rem;">
-            <h1>🎬 MoviSub</h1>
+            <h1>🎬 Субтитры</h1>
             <p style="font-size: 1.05rem;">
-                Сервис для автоматического создания  субтитров к видео.
+                Прототип системы автоматического создания английских и русских субтитров к видео..
             </p>
         </div> 
         """
     )
 
-    gr.Markdown("### 1️⃣ Загрузите видео")
+    gr.Markdown("Загрузите видео")
     video_input = gr.File(
         label="Видео файл",
         file_types=["video"],
     )
 
     run_btn = gr.Button(
-        "✍ Создать субтитры",
+        "Создать субтитры",
         variant="primary",
     )
 
-    gr.Markdown("### 2️⃣ Просмотр результата")
+    gr.Markdown("Просмотр результата")
 
     with gr.Row():
         video_with_en_subs = gr.Video(
@@ -113,14 +113,14 @@ with gr.Blocks(
             interactive=False,
         )
 
-    gr.Markdown("### 3️⃣ Скачать субтитры")
+    gr.Markdown("### Скачать субтитры")
 
     with gr.Row():
         en_srt_output = gr.File(
-            label="📄 Английские субтитры (.srt)",
+            label="Английские субтитры (.srt)",
         )
         ru_srt_output = gr.File(
-            label="📄 Русские субтитры (.srt)",
+            label="Русские субтитры (.srt)",
         )
 
 
