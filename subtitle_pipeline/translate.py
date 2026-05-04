@@ -8,11 +8,11 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 from .subs import clean_text_for_subs, format_timestamp
 
+
 device = "cpu"
 print("Устройство для перевода:", device)
 
 MODEL_DIR = Path("/mnt/d/opus-mt-en-ru")
-
 print(f"Загрузка модели перевода из локальной папки: {MODEL_DIR}")
 
 
@@ -27,9 +27,12 @@ model_mt = AutoModelForSeq2SeqLM.from_pretrained(
 ).to(device)
 
 
+MAX_LINES_RU = 2
+MAX_READING_SPEED_RU = 17
+MIN_GAP_BETWEEN_SUBS_RU = 1.0
+
 
 def translate_batch_en_ru(texts: List[str], max_new_tokens: int = 128) -> List[str]:
-    
     if not texts:
         return []
 
@@ -58,11 +61,11 @@ def translate_batch_en_ru(texts: List[str], max_new_tokens: int = 128) -> List[s
 
 
 def build_ru_segments(segments) -> List[Dict]:
-    
     texts_en_seg = [clean_text_for_subs(seg["text"]) for seg in segments]
     texts_ru_seg = translate_batch_en_ru(texts_en_seg)
 
     segments_ru: List[Dict] = []
+
     for seg, text_ru in zip(segments, texts_ru_seg):
         segments_ru.append(
             {
@@ -71,57 +74,50 @@ def build_ru_segments(segments) -> List[Dict]:
                 "text": text_ru,
             }
         )
+
     return segments_ru
 
 
-
-
 def clean_text_for_subs_ru(text: str) -> str:
-    
     text = re.sub(r"\s{2,}", " ", text)
     text = text.strip()
     return text
 
 
 def split_text_into_lines_ru(text: str, max_line_len: int = 39) -> List[str]:
-    
     return textwrap.wrap(text, width=max_line_len)
 
 
+def is_valid_block_text_ru(
+    text: str,
+    max_chars_block: int = 78,
+    max_line_len: int = 39,
+    max_lines: int = MAX_LINES_RU,
+) -> bool:
+    lines = split_text_into_lines_ru(text, max_line_len=max_line_len)
+
+    return (
+        len(text) <= max_chars_block
+        and len(lines) <= max_lines
+        and all(len(line) <= max_line_len for line in lines)
+    )
+
+
 def split_segment_text_into_blocks_ru(
-    text: str, max_chars_block: int = 70
+    text: str,
+    max_chars_block: int = 78,
+    max_line_len: int = 39,
+    max_lines: int = MAX_LINES_RU,
 ) -> List[str]:
-    
     text = clean_text_for_subs_ru(text)
 
     sentences = re.split(r"(?<=[.!?…])\s+", text)
     sentences = [s.strip() for s in sentences if s.strip()]
 
-    PREPS = {
-        "в",
-        "во",
-        "с",
-        "со",
-        "к",
-        "ко",
-        "у",
-        "о",
-        "об",
-        "обо",
-        "на",
-        "за",
-        "по",
-        "от",
-        "до",
-        "из",
-        "изо",
-        "без",
-        "для",
-        "под",
-        "подо",
-        "над",
-        "при",
-        "про",
+    preps = {
+        "в", "во", "с", "со", "к", "ко", "у", "о", "об", "обо",
+        "на", "за", "по", "от", "до", "из", "изо", "без", "для",
+        "под", "подо", "над", "при", "про",
     }
 
     blocks: List[str] = []
@@ -137,14 +133,23 @@ def split_segment_text_into_blocks_ru(
         for w in words:
             test_block = " ".join(current_words + [w])
 
-            if len(test_block) > max_chars_block:
+            if not is_valid_block_text_ru(
+                test_block,
+                max_chars_block=max_chars_block,
+                max_line_len=max_line_len,
+                max_lines=max_lines,
+            ):
                 if current_words:
                     last_word = current_words[-1].lower()
-                    if last_word in PREPS:
+
+                    if last_word in preps:
                         prep = current_words.pop()
+
                         if current_words:
                             blocks.append(" ".join(current_words))
-                        current_words = [prep, w]
+                            current_words = [prep, w]
+                        else:
+                            current_words = [prep, w]
                     else:
                         blocks.append(" ".join(current_words))
                         current_words = [w]
@@ -159,15 +164,62 @@ def split_segment_text_into_blocks_ru(
     return blocks
 
 
-def segments_to_srt_ru(
+def adjust_timings_for_reading_speed_ru(
+    blocks,
+    max_reading_speed: float = MAX_READING_SPEED_RU,
+    min_gap: float = MIN_GAP_BETWEEN_SUBS_RU,
+):
+    if not blocks:
+        return blocks
+
+    adjusted = [b.copy() for b in blocks]
+
+    for i, block in enumerate(adjusted):
+        text_len = len(block["text"])
+        current_start = block["start"]
+        current_end = block["end"]
+        current_duration = current_end - current_start
+
+        if current_duration <= 0:
+            continue
+
+        current_speed = text_len / current_duration
+
+        if current_speed <= max_reading_speed:
+            continue
+
+        needed_duration = text_len / max_reading_speed
+        desired_end = current_start + needed_duration
+
+        if i < len(adjusted) - 1:
+            next_start = adjusted[i + 1]["start"]
+            max_possible_end = next_start - min_gap
+        else:
+            max_possible_end = desired_end
+
+        if max_possible_end > current_end:
+            new_end = min(desired_end, max_possible_end)
+
+            if new_end > current_end:
+                block["end"] = new_end
+                block["timing_adjusted"] = True
+            else:
+                block["timing_adjusted"] = False
+        else:
+            block["timing_adjusted"] = False
+
+    return adjusted
+
+
+def segments_to_blocks_ru(
     segments,
-    output_path: str,
-    max_chars_block: int = 70,
+    max_chars_block: int = 78,
     max_line_len: int = 39,
+    max_lines: int = MAX_LINES_RU,
     min_block_dur: float = 1.0,
-) -> str:
-    srt_lines = []
-    index = 1
+    adjust_reading_time: bool = True,
+):
+    subtitle_blocks = []
 
     for seg in segments:
         seg_start = seg["start"]
@@ -178,24 +230,27 @@ def segments_to_srt_ru(
             continue
 
         blocks = split_segment_text_into_blocks_ru(
-            seg_text, max_chars_block=max_chars_block
+            seg_text,
+            max_chars_block=max_chars_block,
+            max_line_len=max_line_len,
+            max_lines=max_lines,
         )
+
         if not blocks:
             continue
 
         seg_duration = seg_end - seg_start
         total_chars = sum(len(b) for b in blocks)
+
         if total_chars == 0 or seg_duration <= 0:
             continue
 
         n_blocks = len(blocks)
-
         base_durs = [(len(b) / total_chars) * seg_duration for b in blocks]
 
         if seg_duration >= n_blocks * min_block_dur:
             extra_time = seg_duration - n_blocks * min_block_dur
             base_sum = sum(base_durs) or 1.0
-
             block_durs = [
                 min_block_dur + extra_time * (bd / base_sum)
                 for bd in base_durs
@@ -204,6 +259,7 @@ def segments_to_srt_ru(
             block_durs = base_durs
 
         dur_sum = sum(block_durs)
+
         if dur_sum > 0:
             scale = seg_duration / dur_sum
             block_durs = [d * scale for d in block_durs]
@@ -213,23 +269,70 @@ def segments_to_srt_ru(
         for block_text, block_dur in zip(blocks, block_durs):
             block_end = current_time + block_dur
 
-            start_ts = format_timestamp(current_time)
-            end_ts = format_timestamp(block_end)
-
-            lines = split_text_into_lines_ru(
-                block_text, max_line_len=max_line_len
+            subtitle_blocks.append(
+                {
+                    "start": current_time,
+                    "end": block_end,
+                    "original_start": current_time,
+                    "original_end": block_end,
+                    "text": block_text,
+                    "lines": split_text_into_lines_ru(
+                        block_text,
+                        max_line_len=max_line_len,
+                    ),
+                    "timing_adjusted": False,
+                }
             )
-            if not lines:
-                current_time = block_end
-                continue
 
-            srt_lines.append(str(index))
-            srt_lines.append(f"{start_ts} --> {end_ts}")
-            srt_lines.extend(lines)
-            srt_lines.append("")
-
-            index += 1
             current_time = block_end
+
+    if adjust_reading_time:
+        subtitle_blocks = adjust_timings_for_reading_speed_ru(
+            subtitle_blocks,
+            max_reading_speed=MAX_READING_SPEED_RU,
+            min_gap=MIN_GAP_BETWEEN_SUBS_RU,
+        )
+
+    return subtitle_blocks
+
+
+def segments_to_srt_ru(
+    segments,
+    output_path: str,
+    max_chars_block: int = 78,
+    max_line_len: int = 39,
+    min_block_dur: float = 1.0,
+) -> str:
+    srt_lines = []
+    index = 1
+
+    blocks = segments_to_blocks_ru(
+        segments,
+        max_chars_block=max_chars_block,
+        max_line_len=max_line_len,
+        max_lines=MAX_LINES_RU,
+        min_block_dur=min_block_dur,
+        adjust_reading_time=True,
+    )
+
+    for block in blocks:
+        start_ts = format_timestamp(block["start"])
+        end_ts = format_timestamp(block["end"])
+
+        lines = split_text_into_lines_ru(
+            block["text"],
+            max_line_len=max_line_len,
+        )
+
+        if not lines:
+            continue
+
+        srt_lines.append(str(index))
+        srt_lines.append(f"{start_ts} --> {end_ts}")
+        srt_lines.extend(lines)
+        srt_lines.append("")
+
+        index += 1
 
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("\n".join(srt_lines))
