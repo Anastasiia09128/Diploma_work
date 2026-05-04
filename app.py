@@ -34,7 +34,7 @@ def burn_subtitles(video_path: str, srt_path: str, suffix: str) -> str:
         "-i",
         str(input_video),
         "-vf",
-        f"subtitles={srt_path}",
+        f"subtitles='{srt_path.as_posix()}'",
         "-c:a",
         "copy",
         str(output_video),
