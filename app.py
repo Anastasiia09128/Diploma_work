@@ -53,8 +53,6 @@ def run_pipeline(video_file):
     
     clear_outputs() 
 
-    if not video_file:
-        raise gr.Error("Пожалуйста, загрузите видео.")
 
 
     if isinstance(video_file, str):
@@ -84,7 +82,7 @@ with gr.Blocks(
         <div style="text-align: center; margin-bottom: 1.5rem;">
             <h1>🎬 Субтитры</h1>
             <p style="font-size: 1.05rem;">
-                Прототип системы автоматического создания английских и русских субтитров к видео..
+                Прототип системы автоматического создания английских и русских субтитров к видео.
             </p>
         </div> 
         """
@@ -113,7 +111,7 @@ with gr.Blocks(
             interactive=False,
         )
 
-    gr.Markdown("### Скачать субтитры")
+    gr.Markdown("Скачать субтитры")
 
     with gr.Row():
         en_srt_output = gr.File(
