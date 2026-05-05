@@ -114,10 +114,20 @@ def split_segment_text_into_blocks_ru(
     sentences = re.split(r"(?<=[.!?…])\s+", text)
     sentences = [s.strip() for s in sentences if s.strip()]
 
-    preps = {
-        "в", "во", "с", "со", "к", "ко", "у", "о", "об", "обо",
-        "на", "за", "по", "от", "до", "из", "изо", "без", "для",
-        "под", "подо", "над", "при", "про",
+    bad_end_words = {
+    # предлоги
+    "в", "во", "с", "со", "к", "ко", "у", "о", "об", "обо",
+    "на", "за", "по", "от", "до", "из", "изо", "без", "для",
+    "под", "подо", "над", "при", "про",
+
+    # отрицательные частицы
+    "не", "ни",
+
+    # частицы
+    "бы", "же", "ли",
+
+    # короткие служебные слова
+    "и", "а", "но",
     }
 
     blocks: List[str] = []
@@ -142,7 +152,7 @@ def split_segment_text_into_blocks_ru(
                 if current_words:
                     last_word = current_words[-1].lower()
 
-                    if last_word in preps:
+                    if last_word in bad_end_words:
                         prep = current_words.pop()
 
                         if current_words:
