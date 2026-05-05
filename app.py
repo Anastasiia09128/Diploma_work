@@ -1,7 +1,7 @@
 import gradio as gr
 from pathlib import Path
 import subprocess
-import os
+
 
 from subtitle_pipeline import process_video
 
